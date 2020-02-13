@@ -1,0 +1,12 @@
+/.idea/
+*.pyc
+*.swp
+
+# this folder is ignored here to keep the bootstrap dir itself clean
+/bootstrap/.zwik/
+
+/conda_tmp_root/
+/scripts/fake_prefix/
+.scannerwork/
+coverage_report*.xml
+.coverage*

@@ -1,0 +1,11 @@
+dependencies:
+- black
+- click
+- conda
+- coverage
+- flake8
+- freezegun
+- invoke
+- isort
+- python
+- ruamel_yaml

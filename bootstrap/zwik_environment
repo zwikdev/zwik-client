@@ -1,0 +1,32 @@
+#!/usr/bin/env sh
+# This file belongs to the Zwik client
+#  run it to activate the Zwik environment
+#  please commit this file to your version control system
+#
+# Do not change this file!
+# file integrity: d5b1e40f2560114b06b5e7ad6f829421
+
+set -e
+export ZWIK_BOOT_VERSION=8
+export ZWIK_BOOT_SCRIPT="$0"
+# Set variable if not already defined
+[ -z "$ZWIK_ROOT" ] && export ZWIK_ROOT="${HOME}/zwik"
+[ -z "$ZWIK_URL" ] && export ZWIK_URL="https://zwikdev.github.io"
+[ -z "$ZWIK_CLIENT_SCRIPT" ] && export ZWIK_CLIENT_SCRIPT="${ZWIK_ROOT}/zwik_client.py"
+# Check if installation is ok
+if ! "${ZWIK_ROOT}/bin/python" "$ZWIK_CLIENT_SCRIPT" --version > /dev/null; then
+
+  echo "Zwik is not installed, or not completely"
+  if [ -n "$ZWIK_INSTALLER" ]; then
+    echo "WARNING: Running custom installer script"
+  else
+    export ZWIK_INSTALLER="$(mktemp)_zwik-install.sh"
+    URL="${ZWIK_URL}/zwik-install.sh"
+    curl -f -# "$URL" -o "$ZWIK_INSTALLER" || wget -nv "$URL" -O "$ZWIK_INSTALLER"
+  fi
+
+  echo "Running install script, this can take a while"
+  sh "$ZWIK_INSTALLER"
+fi
+
+"${ZWIK_ROOT}/bin/python" "$ZWIK_CLIENT_SCRIPT" "$@"
