@@ -1330,35 +1330,17 @@ class ZwikEnvironment(object):
             pass
 
     @staticmethod
-    def is_ntfs(path):
-        import subprocess
+    def has_fixed_drive(path):
+        import ctypes
 
         # noinspection PyBroadException
         try:
-            drive = os.path.splitdrive(os.path.realpath(path))[0]
-            if drive:
-                result = subprocess.check_output(
-                    [
-                        "cmd",
-                        "/C",
-                        "wmic",
-                        "path",
-                        "Win32_Volume",
-                        "get",
-                        "Caption,FileSystem",
-                    ],
-                    stderr=subprocess.STDOUT,
-                    universal_newlines=True,
-                )
-                lines = result.splitlines()
-                column = lines[0].find("FileSystem")
-                for line in lines:
-                    caption = line[0:column].strip()
-                    filesystem = line[column:].strip()
-                    if caption == drive + "\\":
-                        return filesystem == "NTFS"
+            DRIVE_FIXED = 3
+            drive = os.path.splitdrive(os.path.realpath(path))[0] + "\\"
+            drive_type = ctypes.windll.kernel32.GetDriveTypeW(drive)
+            return drive_type == DRIVE_FIXED
         except Exception:
-            log.exception("Error checking for NTFS drive")
+            log.exception("Error checking for local drive")
         return False
 
     def link_prefix(self, link_dir):
@@ -1378,8 +1360,8 @@ class ZwikEnvironment(object):
                 else:
                     raise
 
-        if os.name == "nt" and not self.is_ntfs(link_dir):
-            log.warning("Activating on non-NTFS drive can fail")
+        if os.name == "nt" and not self.has_fixed_drive(link_dir):
+            log.warning("WARNING: Activating on non-NTFS drive can fail")
 
         create_link(link_dir, self.prefix)
 
