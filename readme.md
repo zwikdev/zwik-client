@@ -8,10 +8,8 @@ Zwik is a powerful solution that allows you to create reproducible Development E
 
 - [Getting Started](#getting-started)
 - [Check the installation and/or environment](#check-installation-env)
-- [Obsolete and unsafe packages](#obsolete-unsafe-packages)
-- [More information](#more-information)
-    - [Developer notes](#building-and-testing)
-    - [License](#license)
+- [Developer notes](#building-and-testing)
+- [License](#license)
 
 ## Getting Started <a name="getting-started"></a>
 
