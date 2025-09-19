@@ -1,0 +1,36 @@
+name: Client Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  linux-tests:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Run unittests
+      run: |
+        ./test_environment.sh -v --update-all --exec python tasks.py unittest
+    - name: Check update mechanism
+      run: |
+        ./test_environment.sh -v --check-installation --fix
+        ./test_environment.sh -v --version
+
+  macos-tests:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Run unittests
+      run: |
+        ./test_environment.sh -v --update-all --exec python tasks.py unittest
+
+  windows-tests:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Run unittests
+      run: |
+        .\test_environment.bat -v --update-all --exec python tasks.py unittest
