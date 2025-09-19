@@ -1093,7 +1093,7 @@ class ZwikEnvironment(object):
                 )
                 or ""
             )
-            m = re.match(r"# +\[([a-z0-9]+)]", comment)
+            m = re.match(r"# +\[([a-z0-9-]+)]", comment)
             if m and (m.group(1) not in (platform, subdir)):
                 continue
             dep_list.append(env_dep)
