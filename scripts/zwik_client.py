@@ -28,7 +28,7 @@ import tempfile
 from logging.handlers import RotatingFileHandler
 from typing import Optional
 
-__version__ = "5.15"
+__version__ = "5.16"
 min_supported_conda_version = "4.5.4"
 max_supported_conda_version = "24.3.0"
 min_supported_bootstrap_version = 7
