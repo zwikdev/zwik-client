@@ -33,4 +33,4 @@ jobs:
     - uses: actions/checkout@v4
     - name: Run unittests
       run: |
-        .\test_environment.bat -v --update-all --exec python tasks.py unittest
+        .\test_environment.bat -v --unattended --update-all --exec python tasks.py unittest
