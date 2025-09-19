@@ -19,11 +19,11 @@ jobs:
           - os: windows-latest
             script: .\test_environment.bat --unattended
     steps:
-    - uses: actions/checkout@v4
-    - name: Run unittests
-      run: |
-        ${{ matrix.script }} -v --update-all --exec python tasks.py unittest
-    - name: Check update mechanism
-      run: |
-        ${{ matrix.script }} -v --check-installation --fix
-        ${{ matrix.script }} -v --version
+      - uses: actions/checkout@v4
+      - name: Run unittests
+        run: |
+          ${{ matrix.script }} -v --update-all --exec python tasks.py unittest
+      - name: Check update mechanism
+        run: |
+          ${{ matrix.script }} -v --check-installation --fix
+          ${{ matrix.script }} -v --version
