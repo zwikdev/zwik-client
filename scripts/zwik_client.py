@@ -1361,7 +1361,9 @@ class ZwikEnvironment(object):
                     raise
 
         if os.name == "nt" and not self.has_fixed_drive(link_dir):
-            log.warning("WARNING: Activating on non-NTFS drive can fail")
+            log.warning(
+                "WARNING: Creating a link to environment on non-NTFS drive can fail",
+            )
 
         create_link(link_dir, self.prefix)
 
