@@ -1974,6 +1974,8 @@ def get_unattended_msg(args):
     unattended_msg = None
     if args.unattended:
         unattended_msg = "Unattended mode requested via command-line"
+    elif os.environ.get("CI", None):
+        unattended_msg = "CI environment detected, running unattended"
     elif os.environ.get("JENKINS_HOME", None):
         unattended_msg = "Jenkins environment detected, running unattended"
     return unattended_msg
