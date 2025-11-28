@@ -235,6 +235,7 @@ class DummyServerEnvironmentTest(unittest.TestCase):
             "ZWIK_LOCK_FILE",
             "SKIP_INSTALLATION_CHECK",
             "JENKINS_HOME",
+            "CI",
             "ZWIK_ENVS_PATH",
             "CONDA_ENVS_PATH",
             "CONDA_PKGS_DIRS",
