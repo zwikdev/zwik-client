@@ -1415,6 +1415,7 @@ class ZwikEnvironment(object):
             "pkgs_dirs": [pkgs_dir],
             "always_copy": context.always_copy,
             "channel_alias": self.settings.channel_alias,
+            "create_default_packages": [],
         }
 
         os.environ["CONDA_PKGS_DIRS"] = pkgs_dir
@@ -1432,7 +1433,6 @@ class ZwikEnvironment(object):
         context.notify_outdated_conda = False
         context.allow_softlinks = False
         context.add_anaconda_token = False
-        context.create_default_packages = []
         return context
 
     def backup_env(self):
