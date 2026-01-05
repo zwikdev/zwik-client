@@ -28,7 +28,7 @@ import tempfile
 from logging.handlers import RotatingFileHandler
 from typing import Optional
 
-__version__ = "5.15"
+__version__ = "5.16"
 min_supported_conda_version = "4.5.4"
 max_supported_conda_version = "24.3.0"
 min_supported_bootstrap_version = 7
@@ -1093,7 +1093,7 @@ class ZwikEnvironment(object):
                 )
                 or ""
             )
-            m = re.match(r"# +\[([a-z0-9]+)]", comment)
+            m = re.match(r"# +\[([a-z0-9-]+)]", comment)
             if m and (m.group(1) not in (platform, subdir)):
                 continue
             dep_list.append(env_dep)
@@ -1330,35 +1330,17 @@ class ZwikEnvironment(object):
             pass
 
     @staticmethod
-    def is_ntfs(path):
-        import subprocess
+    def has_fixed_drive(path):
+        import ctypes
 
         # noinspection PyBroadException
         try:
-            drive = os.path.splitdrive(os.path.realpath(path))[0]
-            if drive:
-                result = subprocess.check_output(
-                    [
-                        "cmd",
-                        "/C",
-                        "wmic",
-                        "path",
-                        "Win32_Volume",
-                        "get",
-                        "Caption,FileSystem",
-                    ],
-                    stderr=subprocess.STDOUT,
-                    universal_newlines=True,
-                )
-                lines = result.splitlines()
-                column = lines[0].find("FileSystem")
-                for line in lines:
-                    caption = line[0:column].strip()
-                    filesystem = line[column:].strip()
-                    if caption == drive + "\\":
-                        return filesystem == "NTFS"
+            DRIVE_FIXED = 3
+            drive = os.path.splitdrive(os.path.realpath(path))[0] + "\\"
+            drive_type = ctypes.windll.kernel32.GetDriveTypeW(drive)
+            return drive_type == DRIVE_FIXED
         except Exception:
-            log.exception("Error checking for NTFS drive")
+            log.exception("Error checking for local drive")
         return False
 
     def link_prefix(self, link_dir):
@@ -1378,8 +1360,10 @@ class ZwikEnvironment(object):
                 else:
                     raise
 
-        if os.name == "nt" and not self.is_ntfs(link_dir):
-            log.warning("Activating on non-NTFS drive can fail")
+        if os.name == "nt" and not self.has_fixed_drive(link_dir):
+            log.warning(
+                "WARNING: Creating a link to environment on non-NTFS drive can fail",
+            )
 
         create_link(link_dir, self.prefix)
 
@@ -1431,6 +1415,7 @@ class ZwikEnvironment(object):
             "pkgs_dirs": [pkgs_dir],
             "always_copy": context.always_copy,
             "channel_alias": self.settings.channel_alias,
+            "create_default_packages": [],
         }
 
         os.environ["CONDA_PKGS_DIRS"] = pkgs_dir
@@ -1448,7 +1433,6 @@ class ZwikEnvironment(object):
         context.notify_outdated_conda = False
         context.allow_softlinks = False
         context.add_anaconda_token = False
-        context.create_default_packages = []
         return context
 
     def backup_env(self):
@@ -1992,6 +1976,8 @@ def get_unattended_msg(args):
     unattended_msg = None
     if args.unattended:
         unattended_msg = "Unattended mode requested via command-line"
+    elif os.environ.get("CI", None):
+        unattended_msg = "CI environment detected, running unattended"
     elif os.environ.get("JENKINS_HOME", None):
         unattended_msg = "Jenkins environment detected, running unattended"
     return unattended_msg
