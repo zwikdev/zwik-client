@@ -6,10 +6,10 @@
 ::  using the technology of the Zwik client
 ::
 :: Do not change this file!
-:: file integrity: 6e0fcb5d681f31940c9ddc873380a073
+:: file integrity: 30ce3ab600797d36ad845dd54893e86b
 
 setlocal
-set ZWIK_BOOT_VERSION=7
+set ZWIK_BOOT_VERSION=8
 set ZWIK_BOOT_SCRIPT=%~f0
 :: Set variable if not already defined
 if "%ZWIK_ROOT%"=="" set ZWIK_ROOT=%LOCALAPPDATA%\zwik
@@ -23,7 +23,7 @@ call "%ZWIK_ROOT%\python.exe" "%ZWIK_CLIENT_SCRIPT%" --version >nul && goto RUN_
     echo WARNING: Running custom installer script
     goto RUN_INSTALL_SCRIPT
   )
-  set ZWIK_INSTALLER=%TEMP%\zwik-install.bat
+  set ZWIK_INSTALLER=%TEMP%\%RANDOM%-zwik-install.bat
   set URL=%ZWIK_URL%/zwik-install.bat
   :: Also try download using powershell to be compatible with older systems (like Windows 7)
   curl -f -# "%URL%" -o "%ZWIK_INSTALLER%" || powershell -Command "(New-Object Net.WebClient).DownloadFile('%URL%', '%ZWIK_INSTALLER%')" || exit /B 1
