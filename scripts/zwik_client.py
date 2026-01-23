@@ -1175,6 +1175,21 @@ class ZwikEnvironment(object):
                     additional_deps.append(raw_spec)
         self.create_lockfile(additional_deps)
 
+    @staticmethod
+    def _multiple_packages_found(result) -> bool:
+        return len(set([x.md5 for x in result])) > 1
+
+    @staticmethod
+    def _filter_package_from_default_channels(result, default_channels, spec):
+        default_channel_names = [c.rsplit("/", 1)[-1] for c in default_channels]
+        from_defaults = [x for x in result if x.schannel in default_channel_names]
+        if len(from_defaults) == 1:
+            log.warning("Force using %s from default channel", spec)
+            result = from_defaults
+        else:
+            raise AssertionError("Multiple packages found for: {}".format(spec))
+        return result
+
     def create_env(self):
         log.info("Create new environment (%s)", self.prefix)
         from conda import __version__ as conda_version
@@ -1215,14 +1230,12 @@ class ZwikEnvironment(object):
                     )
                 else:
                     raise AssertionError("Package not found: {}".format(spec))
-            if len(set([x.md5 for x in result])) > 1:
-                from_defaults = [x for x in result if x.schannel in default_channels]
-                if len(from_defaults) == 1:
-                    log.warning("Force using %s from default channel", spec)
-                    result = from_defaults
-                else:
-                    raise AssertionError("Multiple packages found for: {}".format(spec))
+            if self._multiple_packages_found(result):
+                result = self._filter_package_from_default_channels(
+                    result, default_channels, spec
+                )
             link_precs.append(result[0])
+
         additional_args = []
         if conda_version == "4.5.4":
             # Newer versions of Python (>=3.7) depend on python_abi
