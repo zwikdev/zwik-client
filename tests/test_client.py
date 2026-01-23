@@ -6,7 +6,7 @@ import logging
 import os
 import sys
 import tempfile
-from unittest import mock
+from unittest import TestCase, mock
 
 from scripts.zwik_client import (
     LockfileError,
@@ -1168,3 +1168,33 @@ class TestZwikEnvironment(DummyServerEnvironmentTest):
         )
 
         self.assertNotIn("ZWIK_LOCK_FILE", os.environ)
+
+
+class TestZwikMultiplePackages(TestCase):
+    def test_prefer_default_channels_when_multiple_packages(self):
+        settings = ZwikSettings()
+        env = ZwikEnvironment(zwik_settings=settings)
+        spec = "my-package=0.0.0=py_0"
+        default_channels = [
+            "https://user:token@zwik.dev.bosch.com/packages/bios",
+            "https://user:token@zwik.dev.bosch.com/packages/third-party",
+            "https://user:token@zwik.dev.bosch.com/packages/conda-forge",
+        ]
+
+        class FakePackageRecord:
+            def __init__(self, schannel):
+                self.schannel = schannel
+
+        result = (
+            FakePackageRecord(schannel="bios"),
+            FakePackageRecord(
+                schannel="https://some.server.com/conda/custom-channel"  # noqa
+            ),
+        )
+
+        try:
+            env._filter_package_from_default_channels(
+                result=result, default_channels=default_channels, spec=spec
+            )
+        except AssertionError:
+            self.fail("Should not have raise AssertionError.")
