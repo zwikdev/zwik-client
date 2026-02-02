@@ -1191,8 +1191,10 @@ class TestZwikMultiplePackages(TestCase):
         )
 
         try:
-            ZwikEnvironment._filter_package_from_default_channels(
+            result = ZwikEnvironment._filter_package_from_default_channels(
                 result=result, default_channels=default_channels, spec=spec
             )
         except AssertionError:
             self.fail("Should not have raised AssertionError.")
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].schannel, "bios")
