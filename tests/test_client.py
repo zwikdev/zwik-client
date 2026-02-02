@@ -1172,8 +1172,6 @@ class TestZwikEnvironment(DummyServerEnvironmentTest):
 
 class TestZwikMultiplePackages(TestCase):
     def test_prefer_default_channels_when_multiple_packages(self):
-        settings = ZwikSettings()
-        env = ZwikEnvironment(zwik_settings=settings)
         spec = "my-package=0.0.0=py_0"
         default_channels = [
             "https://user:token@zwik.dev.bosch.com/packages/bios",
@@ -1188,13 +1186,13 @@ class TestZwikMultiplePackages(TestCase):
         result = (
             FakePackageRecord(schannel="bios"),
             FakePackageRecord(
-                schannel="https://some.server.com/conda/custom-channel"  # noqa
+                schannel="https://some.server.com/conda/custom-channel"
             ),
         )
 
         try:
-            env._filter_package_from_default_channels(
+            ZwikEnvironment._filter_package_from_default_channels(
                 result=result, default_channels=default_channels, spec=spec
             )
         except AssertionError:
-            self.fail("Should not have raise AssertionError.")
+            self.fail("Should not have raised AssertionError.")
