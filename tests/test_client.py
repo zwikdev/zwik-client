@@ -1172,29 +1172,22 @@ class TestZwikEnvironment(DummyServerEnvironmentTest):
 
 class TestZwikMultiplePackages(TestCase):
     def test_prefer_default_channels_when_multiple_packages(self):
+        env = ZwikEnvironment(zwik_settings=ZwikSettings())
+        default_channel_url = env.settings.resolve_channels(
+            ["defaults"], with_credentials=False
+        )[0]
         spec = "my-package=0.0.0=py_0"
-        default_channels = [
-            "https://user:token@zwik.dev.bosch.com/packages/bios",
-            "https://user:token@zwik.dev.bosch.com/packages/third-party",
-            "https://user:token@zwik.dev.bosch.com/packages/conda-forge",
-        ]
-
-        class FakePackageRecord:
-            def __init__(self, schannel):
-                self.schannel = schannel
-
-        result = (
-            FakePackageRecord(schannel="bios"),
-            FakePackageRecord(
-                schannel="https://some.server.com/conda/custom-channel"
-            ),
+        package_record_default = mock.Mock()
+        package_record_default.channel.base_url = default_channel_url
+        package_record_custom = mock.Mock()
+        package_record_custom.channel.base_url = (
+            "https://some.server.com/conda/custom-channel"
         )
+        result = (package_record_default, package_record_custom)
 
         try:
-            result = ZwikEnvironment._filter_package_from_default_channels(
-                result=result, default_channels=default_channels, spec=spec
-            )
+            result = env._filter_package_from_default_channels(result=result, spec=spec)
         except AssertionError:
             self.fail("Should not have raised AssertionError.")
         self.assertEqual(len(result), 1)
-        self.assertEqual(result[0].schannel, "bios")
+        self.assertEqual(result[0].channel.base_url, default_channel_url)
