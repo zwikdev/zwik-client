@@ -1416,6 +1416,7 @@ class ZwikEnvironment(object):
             "always_copy": context.always_copy,
             "channel_alias": self.settings.channel_alias,
             "create_default_packages": [],
+            "report_errors": False,
         }
 
         os.environ["CONDA_PKGS_DIRS"] = pkgs_dir
@@ -1426,7 +1427,10 @@ class ZwikEnvironment(object):
                 yaml.dump(zwik_config, fp)
             reset_context((rc_file,))
 
-        context.report_errors = False
+        try:  # maintain compatibility with older versions
+            context.report_errors = False
+        except AttributeError:
+            pass
         context.auto_update_conda = False
         context.add_pip_as_python_dependency = False
         context.use_pip = False
