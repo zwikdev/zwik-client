@@ -14,10 +14,13 @@ jobs:
         include:
           - os: ubuntu-latest
             script: ./test_environment.sh
+            lock: zwik_environment_linux-64.lock
           - os: macos-latest
             script: ./test_environment.sh
+            lock: zwik_environment_osx-64.lock
           - os: windows-latest
             script: .\test_environment.bat --unattended
+            lock: zwik_environment_win-64.lock
     steps:
       - uses: actions/checkout@v4
       - name: Run unittests
@@ -27,3 +30,6 @@ jobs:
         run: |
           ${{ matrix.script }} -v --check-installation --fix
           ${{ matrix.script }} -v --version
+      - name: Print updated lock file
+        run: |
+          cat .zwik/${{ matrix.lock }}
