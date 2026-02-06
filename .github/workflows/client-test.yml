@@ -30,6 +30,6 @@ jobs:
         run: |
           ${{ matrix.script }} -v --check-installation --fix
           ${{ matrix.script }} -v --version
-      - name: Print lock files
+      - name: Print updated lock file
         run: |
           cat .zwik/${{ matrix.lock }}
