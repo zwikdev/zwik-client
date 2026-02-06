@@ -191,14 +191,17 @@ class ZwikSettings:
             log.exception("Error while running settings hook")
         return False
 
-    def resolve_channel(self, channel, label=None):
+    def resolve_channel(self, channel, label=None, with_credentials=True):
         from urllib.parse import quote, urlparse
 
         if label:
             channel += "/labels/" + label
         if not urlparse(channel).scheme:
             channel = self.channel_alias.rstrip("/") + "/" + channel
-        credential = self.credentials.obtain(channel + "/noarch/repodata.json")
+        if with_credentials:
+            credential = self.credentials.obtain(channel + "/noarch/repodata.json")
+        else:
+            credential = None
         if credential:
             parsed_url = urlparse(channel)
             hostname = parsed_url.hostname
@@ -214,7 +217,7 @@ class ZwikSettings:
             ).geturl()
         return channel
 
-    def resolve_channels(self, channels=(), labels=("",)):
+    def resolve_channels(self, channels=(), labels=("",), with_credentials=True):
         expanded_channels = []
         append_default_channels = True
         for channel in channels:
@@ -234,7 +237,11 @@ class ZwikSettings:
         for label in labels:
             for channel in expanded_channels:
                 try:
-                    resolved_channels.append(self.resolve_channel(channel, label))
+                    resolved_channels.append(
+                        self.resolve_channel(
+                            channel, label, with_credentials=with_credentials
+                        )
+                    )
                 except UrlNotFoundError:
                     pass
         return resolved_channels
@@ -1175,6 +1182,22 @@ class ZwikEnvironment(object):
                     additional_deps.append(raw_spec)
         self.create_lockfile(additional_deps)
 
+    @staticmethod
+    def _multiple_packages_found(result) -> bool:
+        return len(set([x.md5 for x in result])) > 1
+
+    def _filter_package_from_default_channels(self, result, spec):
+        default_channels = self.settings.resolve_channels(
+            ["defaults"], with_credentials=False
+        )
+        from_defaults = [x for x in result if x.channel.base_url in default_channels]
+        if len(from_defaults) == 1:
+            log.warning("Force using %s from default channel", spec)
+            result = from_defaults
+        else:
+            raise AssertionError("Multiple packages found for: {}".format(spec))
+        return result
+
     def create_env(self):
         log.info("Create new environment (%s)", self.prefix)
         from conda import __version__ as conda_version
@@ -1189,9 +1212,6 @@ class ZwikEnvironment(object):
         )
         obsolete_channels = self.settings.resolve_channels(
             self.lock_data["channels"], ("obsolete",)
-        )
-        default_channels = self.settings.resolve_channels(
-            ["defaults"],
         )
         subdirs = [self.lock_data["subdir"], "noarch"]
         link_precs = []
@@ -1215,14 +1235,10 @@ class ZwikEnvironment(object):
                     )
                 else:
                     raise AssertionError("Package not found: {}".format(spec))
-            if len(set([x.md5 for x in result])) > 1:
-                from_defaults = [x for x in result if x.schannel in default_channels]
-                if len(from_defaults) == 1:
-                    log.warning("Force using %s from default channel", spec)
-                    result = from_defaults
-                else:
-                    raise AssertionError("Multiple packages found for: {}".format(spec))
+            if self._multiple_packages_found(result):
+                result = self._filter_package_from_default_channels(result, spec)
             link_precs.append(result[0])
+
         additional_args = []
         if conda_version == "4.5.4":
             # Newer versions of Python (>=3.7) depend on python_abi
@@ -1416,6 +1432,7 @@ class ZwikEnvironment(object):
             "always_copy": context.always_copy,
             "channel_alias": self.settings.channel_alias,
             "create_default_packages": [],
+            "report_errors": False,
         }
 
         os.environ["CONDA_PKGS_DIRS"] = pkgs_dir
@@ -1426,7 +1443,11 @@ class ZwikEnvironment(object):
                 yaml.dump(zwik_config, fp)
             reset_context((rc_file,))
 
-        context.report_errors = False
+        try:  # maintain compatibility with older versions
+            if context.report_errors is not False:
+                context.report_errors = False
+        except AttributeError:
+            raise AssertionError("Cannot configure conda context")
         context.auto_update_conda = False
         context.add_pip_as_python_dependency = False
         context.use_pip = False
