@@ -1427,10 +1427,11 @@ class ZwikEnvironment(object):
                 yaml.dump(zwik_config, fp)
             reset_context((rc_file,))
 
-        try:  # maintain compatibility with older versions
-            context.report_errors = False
-        except AttributeError:
-            pass
+        if context.report_errors is not False:
+            try:  # maintain compatibility with older versions
+                context.report_errors = False
+            except AttributeError:
+                raise AssertionError("Cannot configure conda context")
         context.auto_update_conda = False
         context.add_pip_as_python_dependency = False
         context.use_pip = False
