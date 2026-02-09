@@ -1431,7 +1431,7 @@ class ZwikEnvironment(object):
             if context.report_errors is not False:
                 context.report_errors = False
         except AttributeError:
-            raise AssertionError("Cannot configure conda context")
+            raise AssertionError("Cannot disable 'report_errors'. Aborting.")
         context.auto_update_conda = False
         context.add_pip_as_python_dependency = False
         context.use_pip = False
