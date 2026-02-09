@@ -33,3 +33,4 @@ jobs:
       - name: Print updated lock file
         run: |
           cat .zwik/${{ matrix.lock }}
+
