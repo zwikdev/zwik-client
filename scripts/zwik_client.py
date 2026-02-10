@@ -706,6 +706,7 @@ class ZwikEnvironment(object):
         self.yaml_path = None
         self.lockfile_hash = None
         self._installation_checked = False
+        self._default_channel_urls = None
 
     @classmethod
     def from_yaml(cls, zwik_settings, yaml_file, working_dir=None):
@@ -1187,10 +1188,13 @@ class ZwikEnvironment(object):
         return len(set([x.md5 for x in result])) > 1
 
     def _filter_package_from_default_channels(self, result, spec):
-        default_channels = self.settings.resolve_channels(
-            ["defaults"], with_credentials=False
-        )
-        from_defaults = [x for x in result if x.channel.base_url in default_channels]
+        if self._default_channel_urls is None:
+            self._default_channel_urls = self.settings.resolve_channels(
+                ["defaults"], with_credentials=False
+            )
+        from_defaults = [
+            x for x in result if x.channel.base_url in self._default_channel_urls
+        ]
         if len(from_defaults) == 1:
             log.warning("Force using %s from default channel", spec)
             result = from_defaults
