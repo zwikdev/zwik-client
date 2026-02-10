@@ -239,7 +239,9 @@ class ZwikSettings:
                 try:
                     resolved_channels.append(
                         self.resolve_channel(
-                            channel, label, with_credentials=with_credentials
+                            channel=channel,
+                            label=label,
+                            with_credentials=with_credentials,
                         )
                     )
                 except UrlNotFoundError:
