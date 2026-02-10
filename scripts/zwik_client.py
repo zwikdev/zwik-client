@@ -1187,12 +1187,12 @@ class ZwikEnvironment(object):
 
     @staticmethod
     def _multiple_packages_found(result) -> bool:
-        return len(set([x.md5 for x in result])) > 1
+        return len({x.md5 for x in result}) > 1
 
     def _filter_package_from_default_channels(self, result, spec):
         if self._default_channel_urls is None:
-            self._default_channel_urls = self.settings.resolve_channels(
-                ["defaults"], with_credentials=False
+            self._default_channel_urls = set(
+                self.settings.resolve_channels(["defaults"], with_credentials=False)
             )
         from_defaults = [
             x for x in result if x.channel.base_url in self._default_channel_urls
