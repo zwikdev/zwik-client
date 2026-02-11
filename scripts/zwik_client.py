@@ -1197,11 +1197,15 @@ class ZwikEnvironment(object):
         from_defaults = [
             x for x in result if x.channel.base_url in self._default_channel_urls
         ]
-        if len(from_defaults) == 1:
+        number_of_defaults = len(from_defaults)
+        if number_of_defaults == 1:
             log.warning("Force using %s from default channel", spec)
             result = from_defaults
         else:
-            raise AssertionError("Multiple packages found for: {}".format(spec))
+            raise AssertionError(
+                f"Must have exactly one package of '{spec}' in "
+                f"default channels, found '{number_of_defaults}'. Aborting."
+            )
         return result
 
     def create_env(self):
@@ -1242,6 +1246,7 @@ class ZwikEnvironment(object):
                 else:
                     raise AssertionError("Package not found: {}".format(spec))
             if self._multiple_packages_found(result):
+                log.warning("Multiple packages found for '%s'." % spec)
                 result = self._filter_package_from_default_channels(result, spec)
             link_precs.append(result[0])
 

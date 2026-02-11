@@ -1191,3 +1191,21 @@ class TestZwikMultiplePackages(TestCase):
             self.fail("Should not have raised AssertionError.")
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0].channel.base_url, default_channel_url)
+
+    def test_multiple_packages_found_but_no_packages_from_default_channels(self):
+        env = ZwikEnvironment(zwik_settings=ZwikSettings())
+        spec = "my-package=0.0.0=py_0"
+        package_record_custom_1 = mock.Mock()
+        package_record_custom_1.channel.base_url = (
+            "https://some.server.com/conda/custom-channel-1"
+        )
+        package_record_custom_2 = mock.Mock()
+        package_record_custom_2.channel.base_url = (
+            "https://some.server.com/conda/custom-channel-2"
+        )
+        result = (package_record_custom_1, package_record_custom_2)
+
+        with self.assertRaises(AssertionError):
+            result = env._filter_package_from_default_channels(result=result, spec=spec)
+
+        self.assertEqual(len(result), 2)
