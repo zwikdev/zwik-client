@@ -1246,7 +1246,7 @@ class ZwikEnvironment(object):
                 else:
                     raise AssertionError("Package not found: {}".format(spec))
             if self._multiple_packages_found(result):
-                log.warning("Multiple packages found for '%s'." % spec)
+                log.warning("Multiple packages found for '%s'.", spec)
                 result = self._filter_package_from_default_channels(result, spec)
             link_precs.append(result[0])
 
