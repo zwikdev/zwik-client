@@ -104,7 +104,7 @@ class ZwikSettings:
         self._defaults = {}
         self._defaults["website_url"] = os.environ.get(
             "ZWIK_URL",
-            "https://https://zwikdev.github.io",
+            "https://zwikdev.github.io",
         ).rstrip("/")
         self._defaults["client_url"] = "{}/install-data/zwik_client.py".format(
             self.website_url,
