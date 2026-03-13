@@ -1074,6 +1074,7 @@ class ZwikEnvironment(object):
                     pkg_name
                 )
 
+        for pkg_name in unsafe_pkgs:
             log.warning(
                 "WARNING: The package '%s' is marked as UNSAFE. "
                 "Client continues because of comment in environment file.",
