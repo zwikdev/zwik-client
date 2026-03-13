@@ -28,7 +28,7 @@ import tempfile
 from logging.handlers import RotatingFileHandler
 from typing import Optional
 
-__version__ = "5.16"
+__version__ = "5.17"
 min_supported_conda_version = "4.5.4"
 max_supported_conda_version = "24.3.0"
 min_supported_bootstrap_version = 7
@@ -727,7 +727,9 @@ class ZwikEnvironment(object):
         yaml = import_yaml()
 
         with open(obj.yaml_path) as fp:
-            obj.env_data = yaml.load(fp)
+            value = yaml.load(fp)
+            # When debugging in PyCharm obj.env_data = yaml.load(fp) will set env_data to None
+            obj.env_data = value
         if obj.env_data:
             if "channels" in obj.env_data:
                 channels = obj.env_data["channels"]
@@ -822,12 +824,26 @@ class ZwikEnvironment(object):
     def yaml_hash(self):
         if not self._yaml_hash:
             import hashlib
+            import re
+
+            use_legacy = True
+            script_ver = "NONE FOUND"
+            if self.lock_data and self.lock_data.get("script_version"):
+                script_ver = str(self.lock_data["script_version"])
+                from conda.exports import VersionOrder
+                if VersionOrder(script_ver) > VersionOrder("5.16"):
+                    use_legacy = False
 
             hash_md5 = hashlib.md5()
             with open(self.yaml_path, "r") as f:
                 for line in f.readlines():
+                    if use_legacy:
+                        line = re.sub(r'\s*#\s*CAUTION:\s*(UNSAFE|OBSOLETE)\s*PACKAGE.*', '', line)
+                    else:
+                        line = line.split('#')[0].rstrip() + '\n'
                     hash_md5.update(line.encode("utf-8"))
             self._yaml_hash = hash_md5.hexdigest()
+
         return self._yaml_hash
 
     @property
@@ -893,8 +909,13 @@ class ZwikEnvironment(object):
                 raise LockfileError("lock file seems corrupt")
             with open(path, "r") as fp:
                 data = yaml.load(fp)
+
+                # Temporarily set lock_data so yaml_hash can read the script_version
+                self.lock_data = data
+
                 if "yaml_hash" not in data:
                     raise LockfileError("lock file seems incomplete")
+
                 if data["yaml_hash"] == self.yaml_hash:
                     channel_alias = (
                         data.get("channel_alias"),
@@ -904,8 +925,6 @@ class ZwikEnvironment(object):
                         raise LockfileError("lock file conda alias mismatch")
                     lock_file_channels = ";".join(data.get("channels", []))
                     env_channels = ";".join(self.channels)
-                    # also compare with list of default channels
-                    #  for backwards compatibility
                     def_channels = ";".join(self.settings.default_channels)
                     if lock_file_channels not in (env_channels, def_channels):
                         raise LockfileError("lock file conda channel mismatch")
@@ -917,7 +936,7 @@ class ZwikEnvironment(object):
         log.info("No version lock file found")
         return None
 
-    def write_version_lock(self, lock_dep, obsolete_pkgs=(), unsafe_pkgs=()):
+    def write_version_lock(self, lock_dep):
         import getpass
         import hashlib
         import io
@@ -938,14 +957,6 @@ class ZwikEnvironment(object):
             "channels": self.channels,
             "dependencies": sorted(lock_dep),
         }
-
-        labels = {}
-        for p in obsolete_pkgs:
-            labels[p] = "obsolete"
-        for p in unsafe_pkgs:
-            labels[p] = "unsafe"
-        if labels:
-            data["labels"] = labels
 
         stream = io.StringIO()
         yaml.dump(data, stream)
@@ -1013,15 +1024,17 @@ class ZwikEnvironment(object):
             PackagesNotFoundError,
             ResolvePackageNotFound,
             UnsatisfiableError,
+            UnavailableInvalidChannel,
         )
         from conda.exports import subdir
 
         obsolete_pkgs = set()
         unsafe_pkgs = set()
         last_exception = None
-        # First check only the original urls, then also the obsolete labels
-        #  and finally also unsafe labels
+
+        # Keep the loop for performance: only query obsolete/unsafe if standard fails
         for labels in ((), ("obsolete",), ("obsolete", "unsafe")):
+            print(f"Checking labels {labels}")
             solver = self.get_solver(dependencies, labels)
             try:
                 link_precs = solver.solve_final_state()
@@ -1030,35 +1043,41 @@ class ZwikEnvironment(object):
                     for prec in link_precs:
                         split_channel = prec.channel.name.split("/")
                         if len(split_channel) > 1:
-                            # Format is <channel>/labels/<label>
-                            _, _, label = split_channel
+                            label = split_channel[-1]
                             if label == "obsolete":
                                 obsolete_pkgs.add(prec.name)
-                            else:
+                            elif label == "unsafe":
                                 unsafe_pkgs.add(prec.name)
-                    if unsafe_pkgs:
-                        self.handle_unsafe_pkgs(unsafe_pkgs)
+
+                # Enforce safety comments immediately if unsafe packages are found
+                if unsafe_pkgs:
+                    self.handle_unsafe_pkgs(unsafe_pkgs)
                 break
             except (
-                PackagesNotFoundError,
-                ResolvePackageNotFound,
-                UnsatisfiableError,
+                    PackagesNotFoundError,
+                    ResolvePackageNotFound,
+                    UnsatisfiableError,
+                    UnavailableInvalidChannel,
             ) as exception:
                 last_exception = exception
         else:
             raise last_exception
 
-        if obsolete_pkgs:
+        # Handle Obsolete Warnings
+        for pkg_name in obsolete_pkgs:
+            comment = self.get_dependency_comment(pkg_name)
+            if not comment.startswith("# CAUTION: OBSOLETE PACKAGE"):
+                log.warning(
+                    "WARNING: The package '%s' is marked as obsolete, "
+                    "try to update or find an alternative. "
+                    "Add '# CAUTION: OBSOLETE PACKAGE' to suppress this warning.",
+                    pkg_name
+                )
+
             log.warning(
-                "WARNING: These packages are marked as obsolete,"
-                " try to update or find an alternative:\n%s"
-                ", ".join(obsolete_pkgs),
-            )
-        if unsafe_pkgs:
-            log.warning(
-                "WARNING: Packages below are marked as UNSAFE."
-                " Client continues because of comment in environment file.\n%s"
-                ", ".join(unsafe_pkgs),
+                "WARNING: The package '%s' is marked as UNSAFE. "
+                "Client continues because of comment in environment file.",
+                pkg_name
             )
 
         solved_dep_list = link_precs.item_list
@@ -1077,11 +1096,7 @@ class ZwikEnvironment(object):
                 "dependencies": sorted(self.env_data["dependencies"][:]),
             }
         else:
-            self.write_version_lock(
-                lockfile_deps,
-                obsolete_pkgs,
-                unsafe_pkgs,
-            )
+            self.write_version_lock(lockfile_deps)
             self.lock_data = self.read_version_lock()
             assert self.lock_data
 
@@ -1135,30 +1150,27 @@ class ZwikEnvironment(object):
             specs_to_add=dependencies.get_specs(self.settings),
         )
 
-    def handle_unsafe_pkgs(self, unsafe_pkgs):
+    def get_dependency_comment(self, pkg_name):
         from conda.exports import MatchSpec
+        for index, env_dep in enumerate(self.env_data.get("dependencies", [])):
+            env_dep_spec = MatchSpec(env_dep)
+            if env_dep_spec.name == pkg_name:
+                comment = self.get_yaml_comment(self.env_data["dependencies"], index)
+                return comment.strip() if comment else ""
+        return ""
+
+    def handle_unsafe_pkgs(self, unsafe_pkgs):
+        from conda import CondaError
 
         for pkg_name in unsafe_pkgs:
-            for index, env_dep in enumerate(self.env_data["dependencies"]):
-                env_dep_spec = MatchSpec(env_dep)
-                if env_dep_spec.name == pkg_name:
-                    comment = self.get_yaml_comment(
-                        self.env_data["dependencies"],
-                        index,
-                    )
-                    if comment and comment.strip().startswith(
-                        "# CAUTION: UNSAFE PACKAGE"
-                    ):
-                        break
-            else:
-                from conda import CondaError
-
+            comment = self.get_dependency_comment(pkg_name)
+            if not comment.startswith("# CAUTION: UNSAFE PACKAGE"):
                 raise CondaError(
-                    "ERROR: The following package is UNSAFE,"
-                    " check {}/unsafe"
-                    " for more info: {}".format(
-                        self.settings.website_url,
+                    "ERROR: The package '{}' is UNSAFE. "
+                    "You MUST add '# CAUTION: UNSAFE PACKAGE' comment next to the package in"
+                    "the environment file to proceed.".format(
                         pkg_name,
+                        self.settings.website_url,
                     )
                 )
 
@@ -1217,34 +1229,55 @@ class ZwikEnvironment(object):
         self._check_installation()
 
         specs_to_add = self.lock_data["dependencies"]
-        channels = self.settings.resolve_channels(
-            self.lock_data["channels"],
-        )
-        obsolete_channels = self.settings.resolve_channels(
-            self.lock_data["channels"], ("obsolete",)
-        )
+
+        # Pre-resolve all channel variations
+        channels = self.settings.resolve_channels(self.lock_data["channels"])
+        obsolete_channels = self.settings.resolve_channels(self.lock_data["channels"], ("obsolete",))
+        unsafe_channels = self.settings.resolve_channels(self.lock_data["channels"], ("unsafe",))
+
         subdirs = [self.lock_data["subdir"], "noarch"]
         link_precs = []
 
         for spec in specs_to_add:
             spec_name, _ = spec.split("=", maxsplit=1)
-            search_channels = channels
-            label = self.lock_data.get("labels", {}).get(spec_name)
-            if label:
-                search_channels = self.settings.resolve_channels(
-                    self.lock_data["channels"], ("", label)
-                )
-            result = SubdirData.query_all(spec, search_channels, subdirs)
+
+            is_obsolete = False
+            is_unsafe = False
+
+            # 1. Try Standard Channels
+            result = SubdirData.query_all(spec, channels, subdirs)
+
             if not result:
+                # 2. Try Obsolete Channels
                 result = SubdirData.query_all(spec, obsolete_channels, subdirs)
                 if result:
-                    log.warning(
-                        "The package '%s' is obsolete,"
-                        " please review the environment",
-                        spec_name,
-                    )
+                    is_obsolete = True
                 else:
-                    raise AssertionError("Package not found: {}".format(spec))
+                    # 3. Try Unsafe Channels
+                    result = SubdirData.query_all(spec, unsafe_channels, subdirs)
+                    if result:
+                        is_unsafe = True
+
+            if not result:
+                raise AssertionError("Package not found in standard, obsolete, or unsafe channels: {}".format(spec))
+
+            comment = self.get_dependency_comment(spec_name)
+
+            if is_obsolete:
+                if not comment.startswith("# CAUTION: OBSOLETE PACKAGE"):
+                    log.warning(
+                        "WARNING: The package '%s' is being loaded from an OBSOLETE channel. "
+                        "Add '# CAUTION: OBSOLETE PACKAGE' to suppress this warning.", spec_name
+                    )
+            elif is_unsafe:
+                log.warning("WARNING: The package '%s' is being loaded from an UNSAFE channel.", spec_name)
+                if not comment.startswith("# CAUTION: UNSAFE PACKAGE"):
+                    from conda import CondaError
+                    raise CondaError(
+                        "ERROR: The following package is UNSAFE: {}. "
+                        "You MUST add '# CAUTION: UNSAFE PACKAGE' to the environment file to proceed.".format(spec_name)
+                    )
+
             if self._multiple_packages_found(result):
                 log.warning("Multiple packages found for '%s'.", spec)
                 result = self._filter_package_from_default_channels(result, spec)
