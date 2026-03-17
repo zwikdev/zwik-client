@@ -1058,7 +1058,7 @@ class ZwikEnvironment(object):
 
         # Keep the loop for performance: only query obsolete/unsafe if standard fails
         for labels in ((), ("obsolete",), ("obsolete", "unsafe")):
-            print(f"Checking labels {labels}")
+            log.debug("Checking labels %s", labels)
             solver = self.get_solver(dependencies, labels)
             try:
                 link_precs = solver.solve_final_state()
