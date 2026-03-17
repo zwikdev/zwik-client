@@ -824,27 +824,39 @@ class ZwikEnvironment(object):
     def yaml_hash(self):
         if not self._yaml_hash:
             import hashlib
-            import re
-
-            use_legacy = True
-            script_ver = "NONE FOUND"
-            if self.lock_data and self.lock_data.get("script_version"):
-                script_ver = str(self.lock_data["script_version"])
-                from conda.exports import VersionOrder
-                if VersionOrder(script_ver) > VersionOrder("5.16"):
-                    use_legacy = False
-
             hash_md5 = hashlib.md5()
-            with open(self.yaml_path, "r") as f:
-                for line in f.readlines():
-                    if use_legacy:
-                        line = re.sub(r'\s*#\s*CAUTION:\s*(UNSAFE|OBSOLETE)\s*PACKAGE.*', '', line)
-                    else:
-                        line = line.split('#')[0].rstrip() + '\n'
-                    hash_md5.update(line.encode("utf-8"))
+
+            if self.env_data:
+                if "channels" in self.env_data:
+                    for channel in self.env_data["channels"]:
+                        hash_md5.update(str(channel).encode("utf-8"))
+
+                if "dependencies" in self.env_data:
+                    env_deps = self.get_dependencies(additional_dependencies=[])
+
+                    # Convert the MatchSpec objects to strings and sort them natively
+                    deps_to_hash = sorted([str(spec) for spec in env_deps.specs])
+
+                    for dep in deps_to_hash:
+                        hash_md5.update(dep.encode("utf-8"))
+
             self._yaml_hash = hash_md5.hexdigest()
 
         return self._yaml_hash
+
+    def get_legacy_yaml_hash(self):
+        import hashlib
+        import re
+
+        hash_md5 = hashlib.md5()
+        with open(self.yaml_path, "r") as f:
+            for line in f.readlines():
+                # Legacy method ONLY strips UNSAFE package comments
+                # OBSOLETE comments are deliberately ignored so adding them forces a regeneration
+                line = re.sub(r'\s*#\s*CAUTION:\s*UNSAFE\s*PACKAGE.*', '', line)
+                hash_md5.update(line.encode("utf-8"))
+
+        return hash_md5.hexdigest()
 
     @property
     def env_name(self):
@@ -910,13 +922,24 @@ class ZwikEnvironment(object):
             with open(path, "r") as fp:
                 data = yaml.load(fp)
 
-                # Temporarily set lock_data so yaml_hash can read the script_version
                 self.lock_data = data
 
                 if "yaml_hash" not in data:
                     raise LockfileError("lock file seems incomplete")
 
+                # 1. Check against the modern hash first
+                hash_matches = False
                 if data["yaml_hash"] == self.yaml_hash:
+                    hash_matches = True
+                else:
+                    # 2. Fallback: Check if it's a legacy lock file (<= 5.16)
+                    from conda.exports import VersionOrder
+                    script_ver = data.get("script_version", "0")
+                    if VersionOrder(str(script_ver)) <= VersionOrder("5.16"):
+                        if data["yaml_hash"] == self.get_legacy_yaml_hash():
+                            hash_matches = True
+
+                if hash_matches:
                     channel_alias = (
                         data.get("channel_alias"),
                         data.get("channel_alias").replace("http:", "https:"),
@@ -929,6 +952,7 @@ class ZwikEnvironment(object):
                     if lock_file_channels not in (env_channels, def_channels):
                         raise LockfileError("lock file conda channel mismatch")
                     return data
+
                 log.info(
                     "The lock file is not aligned with the actual environment file"
                 )
@@ -1066,7 +1090,7 @@ class ZwikEnvironment(object):
         # Handle Obsolete Warnings
         for pkg_name in obsolete_pkgs:
             comment = self.get_dependency_comment(pkg_name)
-            if not comment.startswith("# CAUTION: OBSOLETE PACKAGE"):
+            if "CAUTION: OBSOLETE PACKAGE" not in comment:
                 log.warning(
                     "WARNING: The package '%s' is marked as obsolete, "
                     "try to update or find an alternative. "
@@ -1165,14 +1189,11 @@ class ZwikEnvironment(object):
 
         for pkg_name in unsafe_pkgs:
             comment = self.get_dependency_comment(pkg_name)
-            if not comment.startswith("# CAUTION: UNSAFE PACKAGE"):
+            if "CAUTION: UNSAFE PACKAGE" not in comment:
                 raise CondaError(
                     "ERROR: The package '{}' is UNSAFE. "
-                    "You MUST add '# CAUTION: UNSAFE PACKAGE' comment next to the package in"
-                    "the environment file to proceed.".format(
-                        pkg_name,
-                        self.settings.website_url,
-                    )
+                    "You MUST add '# CAUTION: UNSAFE PACKAGE' comment next to the package in "
+                    "the environment file to proceed.".format(pkg_name)
                 )
 
     def partially_update_lockfile(self, update_list):
@@ -1265,14 +1286,14 @@ class ZwikEnvironment(object):
             comment = self.get_dependency_comment(spec_name)
 
             if is_obsolete:
-                if not comment.startswith("# CAUTION: OBSOLETE PACKAGE"):
+                if "CAUTION: OBSOLETE PACKAGE" not in comment:
                     log.warning(
                         "WARNING: The package '%s' is being loaded from an OBSOLETE channel. "
                         "Add '# CAUTION: OBSOLETE PACKAGE' to suppress this warning.", spec_name
                     )
             elif is_unsafe:
                 log.warning("WARNING: The package '%s' is being loaded from an UNSAFE channel.", spec_name)
-                if not comment.startswith("# CAUTION: UNSAFE PACKAGE"):
+                if "CAUTION: UNSAFE PACKAGE" not in comment:
                     from conda import CondaError
                     raise CondaError(
                         "ERROR: The following package is UNSAFE: {}. "
