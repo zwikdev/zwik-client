@@ -834,7 +834,8 @@ class ZwikEnvironment(object):
                 if "dependencies" in self.env_data:
                     env_deps = self.get_dependencies(additional_dependencies=[])
 
-                    # Convert the MatchSpec objects to strings and sort them natively
+                    # Convert the MatchSpec objects to strings and sort them.
+                    # This allows us to reorder the yaml file and not trigger regeneration
                     deps_to_hash = sorted([str(spec) for spec in env_deps.specs])
 
                     for dep in deps_to_hash:
