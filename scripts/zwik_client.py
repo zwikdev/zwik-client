@@ -923,8 +923,6 @@ class ZwikEnvironment(object):
             with open(path, "r") as fp:
                 data = yaml.load(fp)
 
-                self.lock_data = data
-
                 if "yaml_hash" not in data:
                     raise LockfileError("lock file seems incomplete")
 
