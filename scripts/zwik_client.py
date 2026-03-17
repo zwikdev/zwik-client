@@ -727,9 +727,7 @@ class ZwikEnvironment(object):
         yaml = import_yaml()
 
         with open(obj.yaml_path) as fp:
-            value = yaml.load(fp)
-            # When debugging in PyCharm obj.env_data = yaml.load(fp) will set env_data to None
-            obj.env_data = value
+            obj.env_data = yaml.load(fp)
         if obj.env_data:
             if "channels" in obj.env_data:
                 channels = obj.env_data["channels"]
@@ -824,6 +822,7 @@ class ZwikEnvironment(object):
     def yaml_hash(self):
         if not self._yaml_hash:
             import hashlib
+
             hash_md5 = hashlib.md5()
 
             if self.env_data:
@@ -835,8 +834,9 @@ class ZwikEnvironment(object):
                     env_deps = self.get_dependencies(additional_dependencies=[])
 
                     # Convert the MatchSpec objects to strings and sort them.
-                    # This allows us to reorder the yaml file and not trigger regeneration
-                    deps_to_hash = sorted([str(spec) for spec in env_deps.specs])
+                    # This allows us to reorder the yaml file and not
+                    # trigger regeneration
+                    deps_to_hash = sorted([str(s) for s in env_deps.specs])
 
                     for dep in deps_to_hash:
                         hash_md5.update(dep.encode("utf-8"))
@@ -853,8 +853,9 @@ class ZwikEnvironment(object):
         with open(self.yaml_path, "r") as f:
             for line in f.readlines():
                 # Legacy method ONLY strips UNSAFE package comments
-                # OBSOLETE comments are deliberately ignored so adding them forces a regeneration
-                line = re.sub(r'\s*#\s*CAUTION:\s*UNSAFE\s*PACKAGE.*', '', line)
+                # OBSOLETE comments are deliberately ignored so
+                # adding them forces a regeneration
+                line = re.sub(r"\s*#\s*CAUTION:\s*UNSAFE\s*PACKAGE.*", "", line)
                 hash_md5.update(line.encode("utf-8"))
 
         return hash_md5.hexdigest()
@@ -933,6 +934,7 @@ class ZwikEnvironment(object):
                 else:
                     # 2. Fallback: Check if it's a legacy lock file (<= 5.16)
                     from conda.exports import VersionOrder
+
                     script_ver = data.get("script_version", "0")
                     if VersionOrder(str(script_ver)) <= VersionOrder("5.16"):
                         if data["yaml_hash"] == self.get_legacy_yaml_hash():
@@ -1046,8 +1048,8 @@ class ZwikEnvironment(object):
         from conda.exceptions import (
             PackagesNotFoundError,
             ResolvePackageNotFound,
-            UnsatisfiableError,
             UnavailableInvalidChannel,
+            UnsatisfiableError,
         )
         from conda.exports import subdir
 
@@ -1077,10 +1079,10 @@ class ZwikEnvironment(object):
                     self.handle_unsafe_pkgs(unsafe_pkgs)
                 break
             except (
-                    PackagesNotFoundError,
-                    ResolvePackageNotFound,
-                    UnsatisfiableError,
-                    UnavailableInvalidChannel,
+                PackagesNotFoundError,
+                ResolvePackageNotFound,
+                UnsatisfiableError,
+                UnavailableInvalidChannel,
             ) as exception:
                 last_exception = exception
         else:
@@ -1094,14 +1096,14 @@ class ZwikEnvironment(object):
                     "WARNING: The package '%s' is marked as obsolete, "
                     "try to update or find an alternative. "
                     "Add '# CAUTION: OBSOLETE PACKAGE' to suppress this warning.",
-                    pkg_name
+                    pkg_name,
                 )
 
         for pkg_name in unsafe_pkgs:
             log.warning(
                 "WARNING: The package '%s' is marked as UNSAFE. "
                 "Client continues because of comment in environment file.",
-                pkg_name
+                pkg_name,
             )
 
         solved_dep_list = link_precs.item_list
@@ -1176,6 +1178,7 @@ class ZwikEnvironment(object):
 
     def get_dependency_comment(self, pkg_name):
         from conda.exports import MatchSpec
+
         for index, env_dep in enumerate(self.env_data.get("dependencies", [])):
             env_dep_spec = MatchSpec(env_dep)
             if env_dep_spec.name == pkg_name:
@@ -1191,7 +1194,8 @@ class ZwikEnvironment(object):
             if "CAUTION: UNSAFE PACKAGE" not in comment:
                 raise CondaError(
                     "ERROR: The package '{}' is UNSAFE. "
-                    "You MUST add '# CAUTION: UNSAFE PACKAGE' comment next to the package in "
+                    "You MUST add '# CAUTION: UNSAFE PACKAGE' "
+                    "comment next to the package in "
                     "the environment file to proceed.".format(pkg_name)
                 )
 
@@ -1253,8 +1257,12 @@ class ZwikEnvironment(object):
 
         # Pre-resolve all channel variations
         channels = self.settings.resolve_channels(self.lock_data["channels"])
-        obsolete_channels = self.settings.resolve_channels(self.lock_data["channels"], ("obsolete",))
-        unsafe_channels = self.settings.resolve_channels(self.lock_data["channels"], ("unsafe",))
+        obsolete_channels = self.settings.resolve_channels(
+            self.lock_data["channels"], ("obsolete",)
+        )
+        unsafe_channels = self.settings.resolve_channels(
+            self.lock_data["channels"], ("unsafe",)
+        )
 
         subdirs = [self.lock_data["subdir"], "noarch"]
         link_precs = []
@@ -1280,23 +1288,33 @@ class ZwikEnvironment(object):
                         is_unsafe = True
 
             if not result:
-                raise AssertionError("Package not found in standard, obsolete, or unsafe channels: {}".format(spec))
+                raise AssertionError(
+                    "Package not found in standard, obsolete, "
+                    "or unsafe channels: {}".format(spec)
+                )
 
             comment = self.get_dependency_comment(spec_name)
 
             if is_obsolete:
                 if "CAUTION: OBSOLETE PACKAGE" not in comment:
                     log.warning(
-                        "WARNING: The package '%s' is being loaded from an OBSOLETE channel. "
-                        "Add '# CAUTION: OBSOLETE PACKAGE' to suppress this warning.", spec_name
+                        "WARNING: The package '%s' is "
+                        "being loaded from an OBSOLETE channel. "
+                        "Add '# CAUTION: OBSOLETE PACKAGE' to suppress this warning.",
+                        spec_name,
                     )
             elif is_unsafe:
-                log.warning("WARNING: The package '%s' is being loaded from an UNSAFE channel.", spec_name)
+                log.warning(
+                    "WARNING: The package '%s' is being loaded from an UNSAFE channel.",
+                    spec_name,
+                )
                 if "CAUTION: UNSAFE PACKAGE" not in comment:
                     from conda import CondaError
+
                     raise CondaError(
                         "ERROR: The following package is UNSAFE: {}. "
-                        "You MUST add '# CAUTION: UNSAFE PACKAGE' to the environment file to proceed.".format(spec_name)
+                        "You MUST add '# CAUTION: UNSAFE PACKAGE' to "
+                        "the environment file to proceed.".format(spec_name)
                     )
 
             if self._multiple_packages_found(result):

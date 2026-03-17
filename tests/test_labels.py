@@ -4,6 +4,7 @@ import tempfile
 from unittest.mock import patch
 
 import conda
+from conda import CondaError
 
 from tests.utils import DummyServerEnvironmentTest, DummyZwikServer
 
@@ -50,10 +51,6 @@ class TestChannelLabels(DummyServerEnvironmentTest):
                 "{}=1.0=0".format(self.dummy_server.dummy_name),
                 lock_data["dependencies"],
             )
-            self.assertEqual(
-                lock_data["labels"][self.dummy_server.dummy_name],
-                "obsolete",
-            )
 
         with self.subTest("unsafe package"):
             self.dummy_server.dummy_name = "dummy-package-unsafe"
@@ -72,16 +69,12 @@ class TestChannelLabels(DummyServerEnvironmentTest):
                 "{}=1.0=0".format(self.dummy_server.dummy_name),
                 lock_data["dependencies"],
             )
-            self.assertEqual(
-                lock_data["labels"][self.dummy_server.dummy_name],
-                "unsafe",
-            )
 
     @patch("conda.core.link.UnlinkLinkTransaction.execute")
     def test_create_environment(self, link_exec_mock):
         from scripts.zwik_client import ZwikEnvironment, ZwikSettings
 
-        def generate_lock_data(name, label=None):
+        def generate_lock_data(name):
             lock_data = {
                 "dependencies": [
                     "{}=1.0=0".format(name),
@@ -91,10 +84,7 @@ class TestChannelLabels(DummyServerEnvironmentTest):
                 ],
                 "subdir": "linux-64",
             }
-            if label:
-                lock_data["labels"] = {
-                    name: label,
-                }
+
             return lock_data
 
         settings = ZwikSettings()
@@ -120,11 +110,10 @@ class TestChannelLabels(DummyServerEnvironmentTest):
             ) as cm:
                 env.lock_data = generate_lock_data(
                     self.dummy_server.dummy_name,
-                    "obsolete",
                 )
                 env.create_env()
                 # No warning expected when lock data specifies label
-                self.assertEqual(len(cm.output), 0)
+                self.assertTrue("# CAUTION: OBSOLETE PACKAGE" in cm.output[0])
 
                 env.lock_data = generate_lock_data(self.dummy_server.dummy_name)
                 env.create_env()
@@ -133,11 +122,21 @@ class TestChannelLabels(DummyServerEnvironmentTest):
             self.dummy_server.dummy_name = "dummy-link-pkg-unsafe"
             self.dummy_server.dummy_label = "unsafe"
             env.lock_data = generate_lock_data(self.dummy_server.dummy_name)
-            with self.assertRaises(AssertionError):
+            with self.assertRaises(CondaError):
                 env.create_env()
 
-            env.lock_data = generate_lock_data(self.dummy_server.dummy_name, "unsafe")
-            env.create_env()
+        with self.subTest("unsafe package fixed with comment"):
+            self.dummy_server.dummy_name = "dummy-link-pkg-unsafe"
+            self.dummy_server.dummy_label = "unsafe"
+            env.lock_data = generate_lock_data(self.dummy_server.dummy_name)
+
+            # Mock the comment fetcher to simulate the user adding the required comment
+            with patch.object(
+                env, "get_dependency_comment", return_value="# CAUTION: UNSAFE PACKAGE"
+            ):
+                env.create_env()
+
+            self.assertTrue(link_exec_mock.called)
 
     @patch("conda.core.link.UnlinkLinkTransaction.execute")
     def test_multiple_packages_with_default(self, link_exec_mock):
