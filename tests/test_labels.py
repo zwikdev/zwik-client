@@ -112,11 +112,40 @@ class TestChannelLabels(DummyServerEnvironmentTest):
                     self.dummy_server.dummy_name,
                 )
                 env.create_env()
-                # No warning expected when lock data specifies label
+                # Expect a warning that suggests adding the OBSOLETE PACKAGE comment
                 self.assertTrue("# CAUTION: OBSOLETE PACKAGE" in cm.output[0])
 
                 env.lock_data = generate_lock_data(self.dummy_server.dummy_name)
                 env.create_env()
+
+        with self.subTest("obsolete package fixed with comment"):
+            self.dummy_server.dummy_name = "dummy-link-pkg-obsolete"
+            self.dummy_server.dummy_label = "obsolete"
+            env.lock_data = generate_lock_data(self.dummy_server.dummy_name)
+            logger = logging.getLogger("zwik_client")
+            records = []
+
+            class _ListHandler(logging.Handler):
+                def emit(self, record):
+                    records.append(record)
+
+            handler = _ListHandler(level=logging.WARNING)
+            logger.addHandler(handler)
+            try:
+                # Mock the comment fetcher to simulate
+                # the user adding the required comment
+                with patch.object(
+                    env,
+                    "get_dependency_comment",
+                    return_value="# CAUTION: OBSOLETE PACKAGE",
+                ):
+                    env.create_env()
+            finally:
+                logger.removeHandler(handler)
+            self.assertTrue(link_exec_mock.called)
+            self.assertFalse(
+                any(record.levelno >= logging.WARNING for record in records)
+            )
 
         with self.subTest("unsafe package"):
             self.dummy_server.dummy_name = "dummy-link-pkg-unsafe"
@@ -126,6 +155,7 @@ class TestChannelLabels(DummyServerEnvironmentTest):
                 env.create_env()
 
         with self.subTest("unsafe package fixed with comment"):
+            link_exec_mock.reset_mock()
             self.dummy_server.dummy_name = "dummy-link-pkg-unsafe"
             self.dummy_server.dummy_label = "unsafe"
             env.lock_data = generate_lock_data(self.dummy_server.dummy_name)
@@ -136,7 +166,7 @@ class TestChannelLabels(DummyServerEnvironmentTest):
             ):
                 env.create_env()
 
-            self.assertTrue(link_exec_mock.called)
+            link_exec_mock.assert_called_once()
 
     @patch("conda.core.link.UnlinkLinkTransaction.execute")
     def test_multiple_packages_with_default(self, link_exec_mock):
