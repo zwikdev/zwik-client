@@ -836,7 +836,7 @@ class ZwikEnvironment(object):
                     # Convert the MatchSpec objects to strings and sort them.
                     # This allows us to reorder the yaml file and not
                     # trigger regeneration
-                    deps_to_hash = sorted([str(s) for s in env_deps.specs])
+                    deps_to_hash = sorted([str(spec) for spec in env_deps.specs])
 
                     for dep in deps_to_hash:
                         hash_md5.update(dep.encode("utf-8"))
@@ -847,16 +847,30 @@ class ZwikEnvironment(object):
 
     def get_legacy_yaml_hash(self):
         import hashlib
-        import re
 
         hash_md5 = hashlib.md5()
         with open(self.yaml_path, "r") as f:
+            in_allow_unsafe_block = False
             for line in f.readlines():
-                # Legacy method ONLY strips UNSAFE package comments
-                # OBSOLETE comments are deliberately ignored so
-                # adding them forces a regeneration
-                line = re.sub(r"\s*#\s*CAUTION:\s*UNSAFE\s*PACKAGE.*", "", line)
-                hash_md5.update(line.encode("utf-8"))
+                if line.startswith("allow_unsafe:"):
+                    in_allow_unsafe_block = True
+                    continue
+
+                if in_allow_unsafe_block:
+                    # Skip empty lines, comments, and indented lines
+                    if (
+                        not line.strip()
+                        or line.startswith(" ")
+                        or line.startswith("\t")
+                        or line.startswith("#")
+                    ):
+                        continue
+                    else:
+                        # Reached a new root-level key, stop skipping
+                        in_allow_unsafe_block = False
+
+                if not in_allow_unsafe_block:
+                    hash_md5.update(line.encode("utf-8"))
 
         return hash_md5.hexdigest()
 
@@ -1054,10 +1068,9 @@ class ZwikEnvironment(object):
         from conda.exports import subdir
 
         obsolete_pkgs = set()
-        unsafe_pkgs = set()
+        unsafe_pkgs = {}
         last_exception = None
 
-        # Keep the loop for performance: only query obsolete/unsafe if standard fails
         for labels in ((), ("obsolete",), ("obsolete", "unsafe")):
             log.debug("Checking labels %s", labels)
             solver = self.get_solver(dependencies, labels)
@@ -1072,9 +1085,7 @@ class ZwikEnvironment(object):
                             if label == "obsolete":
                                 obsolete_pkgs.add(prec.name)
                             elif label == "unsafe":
-                                unsafe_pkgs.add(prec.name)
-
-                # Enforce safety comments immediately if unsafe packages are found
+                                unsafe_pkgs[prec.name] = prec.version
                 if unsafe_pkgs:
                     self.handle_unsafe_pkgs(unsafe_pkgs)
                 break
@@ -1088,21 +1099,18 @@ class ZwikEnvironment(object):
         else:
             raise last_exception
 
-        # Handle Obsolete Warnings
         for pkg_name in obsolete_pkgs:
-            comment = self.get_dependency_comment(pkg_name)
-            if "CAUTION: OBSOLETE PACKAGE" not in comment:
-                log.warning(
-                    "WARNING: The package '%s' is marked as obsolete, "
-                    "try to update or find an alternative. "
-                    "Add '# CAUTION: OBSOLETE PACKAGE' to suppress this warning.",
-                    pkg_name,
-                )
+            log.warning(
+                "WARNING: The package '%s' is marked as OBSOLETE. "
+                "Consider updating to a newer version.",
+                pkg_name,
+            )
 
         for pkg_name in unsafe_pkgs:
             log.warning(
                 "WARNING: The package '%s' is marked as UNSAFE. "
-                "Client continues because of comment in environment file.",
+                "Client continues because it is explicitly allowed "
+                "in the environment file.",
                 pkg_name,
             )
 
@@ -1176,28 +1184,39 @@ class ZwikEnvironment(object):
             specs_to_add=dependencies.get_specs(self.settings),
         )
 
-    def get_dependency_comment(self, pkg_name):
-        from conda.exports import MatchSpec
-
-        for index, env_dep in enumerate(self.env_data.get("dependencies", [])):
-            env_dep_spec = MatchSpec(env_dep)
-            if env_dep_spec.name == pkg_name:
-                comment = self.get_yaml_comment(self.env_data["dependencies"], index)
-                return comment.strip() if comment else ""
-        return ""
-
     def handle_unsafe_pkgs(self, unsafe_pkgs):
         from conda import CondaError
+        from conda.exports import MatchSpec
 
-        for pkg_name in unsafe_pkgs:
-            comment = self.get_dependency_comment(pkg_name)
-            if "CAUTION: UNSAFE PACKAGE" not in comment:
-                raise CondaError(
-                    "ERROR: The package '{}' is UNSAFE. "
-                    "You MUST add '# CAUTION: UNSAFE PACKAGE' "
-                    "comment next to the package in "
-                    "the environment file to proceed.".format(pkg_name)
-                )
+        allow_unsafe_data = self.env_data.get("allow_unsafe") or {}
+        confirm_msg = allow_unsafe_data.get("confirm", "")
+        allowed_pkgs = allow_unsafe_data.get("packages") or []
+
+        allowed_pkg_names = [MatchSpec(p).name for p in allowed_pkgs]
+
+        for pkg_name, pkg_version in unsafe_pkgs.items():
+            # Check if the risk is accepted AND the package is listed
+            if (
+                confirm_msg == "Risk of unsafe packages is accepted"
+                and pkg_name in allowed_pkg_names
+            ):
+                continue
+
+            error_msg = (
+                f"\nERROR: The package '{pkg_name}' is marked as UNSAFE.\n"
+                f"To continue using this package, "
+                f"you must explicitly allow it by adding "
+                f"the 'allow_unsafe' section to your "
+                f"zwik_environment.yaml file.\n\n"
+                f"Example:\n\n"
+                f"dependencies:\n"
+                f"- your_packages\n\n"
+                f"allow_unsafe:\n"
+                f'  confirm: "Risk of unsafe packages is accepted"\n'
+                f"  packages:\n"
+                f"    - {pkg_name}=={pkg_version}\n"
+            )
+            raise CondaError(error_msg)
 
     def partially_update_lockfile(self, update_list):
         from conda.exports import MatchSpec
@@ -1250,6 +1269,7 @@ class ZwikEnvironment(object):
         from conda import __version__ as conda_version
         from conda.api import SubdirData
         from conda.core.link import PrefixSetup, UnlinkLinkTransaction
+        from conda.exports import MatchSpec
 
         self._check_installation()
 
@@ -1293,29 +1313,24 @@ class ZwikEnvironment(object):
                     "or unsafe channels: {}".format(spec)
                 )
 
-            comment = self.get_dependency_comment(spec_name)
-
             if is_obsolete:
-                if "CAUTION: OBSOLETE PACKAGE" not in comment:
-                    log.warning(
-                        "WARNING: The package '%s' is "
-                        "being loaded from an OBSOLETE channel. "
-                        "Add '# CAUTION: OBSOLETE PACKAGE' to suppress this warning.",
-                        spec_name,
-                    )
-            elif is_unsafe:
                 log.warning(
-                    "WARNING: The package '%s' is being loaded from an UNSAFE channel.",
+                    "WARNING: The package '%s' is being loaded "
+                    "from an OBSOLETE channel. "
+                    "Consider updating to a newer version.",
                     spec_name,
                 )
-                if "CAUTION: UNSAFE PACKAGE" not in comment:
-                    from conda import CondaError
+            elif is_unsafe:
+                log.warning(
+                    "WARNING: The package '%s' is being loaded from "
+                    "an UNSAFE channel. Client continues because it "
+                    "is explicitly allowed in the environment file",
+                    spec_name,
+                )
 
-                    raise CondaError(
-                        "ERROR: The following package is UNSAFE: {}. "
-                        "You MUST add '# CAUTION: UNSAFE PACKAGE' to "
-                        "the environment file to proceed.".format(spec_name)
-                    )
+                ms = MatchSpec(spec)
+                pkg_version = str(ms.version) if ms.version else "<version>"
+                self.handle_unsafe_pkgs({ms.name: pkg_version})
 
             if self._multiple_packages_found(result):
                 log.warning("Multiple packages found for '%s'.", spec)

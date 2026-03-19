@@ -164,42 +164,48 @@ class TestZwikEnvironment(DummyServerEnvironmentTest):
         write_mock_lock_file(env.version_lock_path, lock_data)
 
         # Fallback succeeds because script <= 5.16 and legacy hashes match
-        with self.subTest("legacy lock file without comments"):
+        with self.subTest("legacy lock file without allow_unsafe"):
             env = ZwikEnvironment.from_yaml(settings, self.yaml_file)
 
             self.assertTrue(env.has_valid_lockfile())
             # Verify the client accepted the legacy hash over the modern one
             self.assertEqual(env.lock_data["yaml_hash"], legacy_hash)
 
-        # Add UNSAFE comment. The regex strips it, so
-        # the legacy hash should remain the same.
-        with self.subTest("legacy lock file with UNSAFE comment"):
+        # Add allow_unsafe block. It should be skipped for yaml
+        # hash calculation, so legacy hash should remain identical.
+        with self.subTest("legacy lock file with allow_unsafe block"):
             yaml_content_unsafe = (
-                "dependencies:\n  - python\n  - foobar # CAUTION: UNSAFE PACKAGE\n"
+                "dependencies:\n"
+                "  - python\n"
+                "  - foobar\n"
+                "allow_unsafe:\n"
+                '  confirm: "Risk of unsafe packages is accepted"\n'
+                "  packages:\n"
+                "    - foobar==1.0\n"
             )
             with open(self.yaml_file, "w") as fp:
                 fp.write(yaml_content_unsafe)
 
             env = ZwikEnvironment.from_yaml(settings, self.yaml_file)
 
-            # Legacy hash ignored the UNSAFE comment
+            # Legacy hash successfully skipped the allow_unsafe block
             self.assertEqual(env.get_legacy_yaml_hash(), legacy_hash)
             self.assertTrue(env.has_valid_lockfile())
 
-        # Add OBSOLETE comment. The regex DOES NOT strip it,
+        # Add a new dependency. The hasher DOES NOT skip this,
         # so the legacy hash should change.
-        with self.subTest("legacy lock file with OBSOLETE comment"):
-            yaml_content_obsolete = (
-                "dependencies:\n  - python\n  - foobar # CAUTION: OBSOLETE PACKAGE\n"
+        with self.subTest("legacy lock file with new dependency"):
+            yaml_content_new_dep = (
+                "dependencies:\n" "  - python\n" "  - foobar\n" "  - new_pkg\n"
             )
             with open(self.yaml_file, "w") as fp:
-                fp.write(yaml_content_obsolete)
+                fp.write(yaml_content_new_dep)
 
             env = ZwikEnvironment.from_yaml(settings, self.yaml_file)
 
             new_legacy_hash = env.get_legacy_yaml_hash()
 
-            # The legacy hash changed because the obsolete comment was parsed
+            # The legacy hash changed because a new package was added
             self.assertNotEqual(new_legacy_hash, legacy_hash)
 
             # Validation should fail, forcing the environment to regenerate
