@@ -237,6 +237,7 @@ class TestZwikEnvironment(DummyServerEnvironmentTest):
 
     def test_yaml_hash_without_env_data(self):
         from conda import CondaError
+
         from scripts.zwik_client import ZwikEnvironment, ZwikSettings
 
         env = ZwikEnvironment(ZwikSettings())
