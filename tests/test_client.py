@@ -235,6 +235,18 @@ class TestZwikEnvironment(DummyServerEnvironmentTest):
             env = ZwikEnvironment.from_yaml(settings, self.yaml_file)
             self.assertTrue(env.has_valid_lockfile())
 
+    def test_yaml_hash_without_env_data(self):
+        from conda import CondaError
+        from scripts.zwik_client import ZwikEnvironment, ZwikSettings
+
+        env = ZwikEnvironment(ZwikSettings())
+
+        # Explicitly ensure env_data is not set
+        env.env_data = None
+
+        with self.assertRaises(CondaError):
+            _ = env.yaml_hash
+
     def test_envs_dir_override(self):
         env = ZwikEnvironment.from_prefix(ZwikSettings(), "abcde")
         self.assertEqual(

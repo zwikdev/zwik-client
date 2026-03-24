@@ -820,6 +820,8 @@ class ZwikEnvironment(object):
 
     @property
     def yaml_hash(self):
+        from conda import CondaError
+
         if not self._yaml_hash:
             import hashlib
 
@@ -834,12 +836,17 @@ class ZwikEnvironment(object):
                     env_deps = self.get_dependencies(additional_dependencies=[])
 
                     # Convert the MatchSpec objects to strings and sort them.
-                    # This allows us to reorder the yaml file and not
+                    # This allows the user to reorder the yaml file and not
                     # trigger regeneration
                     deps_to_hash = sorted([str(spec) for spec in env_deps.specs])
 
                     for dep in deps_to_hash:
                         hash_md5.update(dep.encode("utf-8"))
+            else:
+                raise CondaError(
+                    "env_data could not be loaded, "
+                    "check is zwik_environment.yaml is defined."
+                )
 
             self._yaml_hash = hash_md5.hexdigest()
 
@@ -856,18 +863,9 @@ class ZwikEnvironment(object):
                     in_allow_unsafe_block = True
                     continue
 
-                if in_allow_unsafe_block:
-                    # Skip empty lines, comments, and indented lines
-                    if (
-                        not line.strip()
-                        or line.startswith(" ")
-                        or line.startswith("\t")
-                        or line.startswith("#")
-                    ):
-                        continue
-                    else:
-                        # Reached a new root-level key, stop skipping
-                        in_allow_unsafe_block = False
+                elif in_allow_unsafe_block and re.match(r"^[^\s#]", line):
+                    # Reached a new root-level key, stop skipping
+                    in_allow_unsafe_block = False
 
                 if not in_allow_unsafe_block:
                     hash_md5.update(line.encode("utf-8"))
