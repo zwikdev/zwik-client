@@ -114,6 +114,140 @@ class TestZwikEnvironment(DummyServerEnvironmentTest):
         env = ZwikEnvironment.from_yaml(ZwikSettings(), self.yaml_file)
         self.assertIsNone(env.lock_data)
 
+    def test_legacy_hash_fallback(self):
+        import hashlib
+        import io
+
+        from scripts.zwik_client import import_yaml
+
+        settings = ZwikSettings()
+
+        def write_mock_lock_file(lock_path, data):
+            yaml = import_yaml()
+            stream = io.StringIO()
+            yaml.dump(data, stream)
+            output = stream.getvalue()
+
+            # Reproduce the script's exact lockfile integrity hashing
+            new_hash = hashlib.md5()
+            for line in output.splitlines():
+                new_hash.update(line.strip().encode())
+            integrity_hash = new_hash.hexdigest()
+
+            os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+            with open(lock_path, "w") as fp:
+                fp.write("# lockfile integrity: {}\n".format(integrity_hash))
+                fp.write(output)
+
+        # Setup base legacy yaml file
+        yaml_content = "dependencies:\n  - python\n  - foobar\n"
+        with open(self.yaml_file, "w") as fp:
+            fp.write(yaml_content)
+
+        env = ZwikEnvironment.from_yaml(settings, self.yaml_file)
+
+        # Calculate both hashes explicitly to show their difference
+        legacy_hash = env.get_legacy_yaml_hash()
+        modern_hash = env.yaml_hash
+
+        self.assertNotEqual(legacy_hash, modern_hash)
+
+        lock_data = {
+            "script_version": "5.16",  # Mark as a legacy version
+            "yaml_hash": legacy_hash,
+            "channel_alias": env.settings.channel_alias,
+            "channels": env.channels,
+            "dependencies": ["foobar=1.0=0", "python=3.9=0"],
+            "subdir": "linux-64",
+        }
+
+        write_mock_lock_file(env.version_lock_path, lock_data)
+
+        # Fallback succeeds because script <= 5.16 and legacy hashes match
+        with self.subTest("legacy lock file without allow_unsafe"):
+            env = ZwikEnvironment.from_yaml(settings, self.yaml_file)
+
+            self.assertTrue(env.has_valid_lockfile())
+            # Verify the client accepted the legacy hash over the modern one
+            self.assertEqual(env.lock_data["yaml_hash"], legacy_hash)
+
+        # Add allow_unsafe block. It should be skipped for yaml
+        # hash calculation, so legacy hash should remain identical.
+        with self.subTest("legacy lock file with allow_unsafe block"):
+            yaml_content_unsafe = (
+                "dependencies:\n"
+                "  - python\n"
+                "  - foobar\n"
+                "allow_unsafe:\n"
+                '  confirm: "Risk of unsafe packages is accepted"\n'
+                "  packages:\n"
+                "    - foobar==1.0\n"
+            )
+            with open(self.yaml_file, "w") as fp:
+                fp.write(yaml_content_unsafe)
+
+            env = ZwikEnvironment.from_yaml(settings, self.yaml_file)
+
+            # Legacy hash successfully skipped the allow_unsafe block
+            self.assertEqual(env.get_legacy_yaml_hash(), legacy_hash)
+            self.assertTrue(env.has_valid_lockfile())
+
+        # Add a new dependency. The hasher DOES NOT skip this,
+        # so the legacy hash should change.
+        with self.subTest("legacy lock file with new dependency"):
+            yaml_content_new_dep = (
+                "dependencies:\n" "  - python\n" "  - foobar\n" "  - new_pkg\n"
+            )
+            with open(self.yaml_file, "w") as fp:
+                fp.write(yaml_content_new_dep)
+
+            env = ZwikEnvironment.from_yaml(settings, self.yaml_file)
+
+            new_legacy_hash = env.get_legacy_yaml_hash()
+
+            # The legacy hash changed because a new package was added
+            self.assertNotEqual(new_legacy_hash, legacy_hash)
+
+            # Validation should fail, forcing the environment to regenerate
+            self.assertFalse(env.has_valid_lockfile())
+
+        # Modern script ignores legacy fallback completely
+        with self.subTest("modern script version with legacy hash"):
+            # Restore base yaml
+            with open(self.yaml_file, "w") as fp:
+                fp.write(yaml_content)
+
+            # Pretend this lockfile was written by v5.17,
+            # but still holds the old legacy hash
+            lock_data["script_version"] = "5.17"
+            write_mock_lock_file(env.version_lock_path, lock_data)
+
+            env = ZwikEnvironment.from_yaml(settings, self.yaml_file)
+
+            # Fails validation because version > 5.16,
+            # meaning it only accepted modern_hash
+            self.assertFalse(env.has_valid_lockfile())
+
+            # If we update the file to the modern_hash,
+            # it immediately becomes valid again
+            lock_data["yaml_hash"] = modern_hash
+            write_mock_lock_file(env.version_lock_path, lock_data)
+            env = ZwikEnvironment.from_yaml(settings, self.yaml_file)
+            self.assertTrue(env.has_valid_lockfile())
+
+    def test_yaml_hash_without_env_data(self):
+        from conda import CondaError
+
+        from scripts.zwik_client import ZwikEnvironment, ZwikSettings
+
+        env = ZwikEnvironment(ZwikSettings())
+
+        # Explicitly ensure env_data is not set
+        env.env_data = None
+
+        with self.assertRaises(CondaError):
+            _ = env.yaml_hash
+
     def test_envs_dir_override(self):
         env = ZwikEnvironment.from_prefix(ZwikSettings(), "abcde")
         self.assertEqual(

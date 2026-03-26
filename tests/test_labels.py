@@ -4,6 +4,7 @@ import tempfile
 from unittest.mock import patch
 
 import conda
+from conda import CondaError
 
 from tests.utils import DummyServerEnvironmentTest, DummyZwikServer
 
@@ -12,7 +13,7 @@ class TestChannelLabels(DummyServerEnvironmentTest):
     def test_create_lockfile(self):
         from scripts.zwik_client import ZwikEnvironment, ZwikSettings
 
-        def get_lock_data(env_settings, package_name):
+        def get_lock_data(env_settings, package_name, allow_unsafe_data=None):
             env = ZwikEnvironment(env_settings)
             env._installation_checked = True
             env.env_data = {
@@ -20,6 +21,8 @@ class TestChannelLabels(DummyServerEnvironmentTest):
                     package_name,
                 ],
             }
+            if allow_unsafe_data:
+                env.env_data["allow_unsafe"] = allow_unsafe_data
 
             env.lock_data = None
             with tempfile.TemporaryDirectory() as tmp_dir:
@@ -39,7 +42,6 @@ class TestChannelLabels(DummyServerEnvironmentTest):
                 "{}=1.0=0".format(self.dummy_server.dummy_name),
                 lock_data["dependencies"],
             )
-            self.assertFalse(lock_data.get("labels"))
 
         with self.subTest("obsolete package"):
             self.dummy_server.dummy_name = "dummy-package-obsolete"
@@ -50,38 +52,35 @@ class TestChannelLabels(DummyServerEnvironmentTest):
                 "{}=1.0=0".format(self.dummy_server.dummy_name),
                 lock_data["dependencies"],
             )
-            self.assertEqual(
-                lock_data["labels"][self.dummy_server.dummy_name],
-                "obsolete",
-            )
 
         with self.subTest("unsafe package"):
             self.dummy_server.dummy_name = "dummy-package-unsafe"
             self.dummy_server.dummy_label = "unsafe"
 
+            # Should fail without allow_unsafe block
             with self.assertRaises(conda.CondaError):
                 get_lock_data(settings, self.dummy_server.dummy_name)
 
-            with patch(
-                "scripts.zwik_client.ZwikEnvironment.get_yaml_comment",
-                return_value="# CAUTION: UNSAFE PACKAGE",
-            ):
-                with self.assertLogs("zwik_client", level=logging.WARNING):
-                    lock_data = get_lock_data(settings, self.dummy_server.dummy_name)
+            # Provide the allow_unsafe block
+            allow_unsafe_data = {
+                "confirm": "Risk of unsafe packages is accepted",
+                "packages": [f"{self.dummy_server.dummy_name}==1.0.0"],
+            }
+
+            with self.assertLogs("zwik_client", level=logging.WARNING):
+                lock_data = get_lock_data(
+                    settings, self.dummy_server.dummy_name, allow_unsafe_data
+                )
             self.assertIn(
                 "{}=1.0=0".format(self.dummy_server.dummy_name),
                 lock_data["dependencies"],
-            )
-            self.assertEqual(
-                lock_data["labels"][self.dummy_server.dummy_name],
-                "unsafe",
             )
 
     @patch("conda.core.link.UnlinkLinkTransaction.execute")
     def test_create_environment(self, link_exec_mock):
         from scripts.zwik_client import ZwikEnvironment, ZwikSettings
 
-        def generate_lock_data(name, label=None):
+        def generate_lock_data(name):
             lock_data = {
                 "dependencies": [
                     "{}=1.0=0".format(name),
@@ -91,10 +90,7 @@ class TestChannelLabels(DummyServerEnvironmentTest):
                 ],
                 "subdir": "linux-64",
             }
-            if label:
-                lock_data["labels"] = {
-                    name: label,
-                }
+
             return lock_data
 
         settings = ZwikSettings()
@@ -104,7 +100,6 @@ class TestChannelLabels(DummyServerEnvironmentTest):
         env.override_prefix = "dummy"
 
         with self.subTest("normal package"):
-
             self.dummy_server.dummy_name = "dummy-link-pkg-normal"
             self.dummy_server.dummy_label = None
             env.lock_data = generate_lock_data(self.dummy_server.dummy_name)
@@ -120,11 +115,10 @@ class TestChannelLabels(DummyServerEnvironmentTest):
             ) as cm:
                 env.lock_data = generate_lock_data(
                     self.dummy_server.dummy_name,
-                    "obsolete",
                 )
                 env.create_env()
-                # No warning expected when lock data specifies label
-                self.assertEqual(len(cm.output), 0)
+                # Verify that a warning was displayed
+                self.assertTrue("OBSOLETE" in cm.output[0])
 
                 env.lock_data = generate_lock_data(self.dummy_server.dummy_name)
                 env.create_env()
@@ -133,11 +127,26 @@ class TestChannelLabels(DummyServerEnvironmentTest):
             self.dummy_server.dummy_name = "dummy-link-pkg-unsafe"
             self.dummy_server.dummy_label = "unsafe"
             env.lock_data = generate_lock_data(self.dummy_server.dummy_name)
-            with self.assertRaises(AssertionError):
+            # Fails immediately without allow_unsafe block
+            with self.assertRaises(CondaError):
                 env.create_env()
 
-            env.lock_data = generate_lock_data(self.dummy_server.dummy_name, "unsafe")
+        with self.subTest("unsafe package explicitly allowed"):
+            link_exec_mock.reset_mock()
+            self.dummy_server.dummy_name = "dummy-link-pkg-unsafe"
+            self.dummy_server.dummy_label = "unsafe"
+            env.lock_data = generate_lock_data(self.dummy_server.dummy_name)
+
+            # Simulate the user adding the allow_unsafe block to their environment yaml
+            env.env_data = {
+                "allow_unsafe": {
+                    "confirm": "Risk of unsafe packages is accepted",
+                    "packages": [f"{self.dummy_server.dummy_name}==1.0"],
+                }
+            }
+
             env.create_env()
+            link_exec_mock.assert_called_once()
 
     @patch("conda.core.link.UnlinkLinkTransaction.execute")
     def test_multiple_packages_with_default(self, link_exec_mock):
