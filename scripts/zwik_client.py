@@ -845,7 +845,7 @@ class ZwikEnvironment(object):
             else:
                 raise CondaError(
                     "env_data could not be loaded, "
-                    "check is zwik_environment.yaml is defined."
+                    "check if zwik_environment.yaml is defined."
                 )
 
             self._yaml_hash = hash_md5.hexdigest()
@@ -1099,14 +1099,14 @@ class ZwikEnvironment(object):
 
         for pkg_name in obsolete_pkgs:
             log.warning(
-                "WARNING: The package '%s' is marked as OBSOLETE. "
+                "The package '%s' is marked as OBSOLETE. "
                 "Consider updating to a newer version.",
                 pkg_name,
             )
 
         for pkg_name in unsafe_pkgs:
             log.warning(
-                "WARNING: The package '%s' is marked as UNSAFE. "
+                "The package '%s' is marked as UNSAFE. "
                 "Client continues because it is explicitly allowed "
                 "in the environment file.",
                 pkg_name,
@@ -1208,7 +1208,7 @@ class ZwikEnvironment(object):
                 f"zwik_environment.yaml file.\n\n"
                 f"Example:\n\n"
                 f"dependencies:\n"
-                f"- your_packages\n\n"
+                f"- {pkg_name}\n\n"
                 f"allow_unsafe:\n"
                 f'  confirm: "Risk of unsafe packages is accepted"\n'
                 f"  packages:\n"
@@ -1313,15 +1313,14 @@ class ZwikEnvironment(object):
 
             if is_obsolete:
                 log.warning(
-                    "WARNING: The package '%s' is being loaded "
-                    "from an OBSOLETE channel. "
+                    "The package '%s' is OBSOLETE. "
                     "Consider updating to a newer version.",
                     spec_name,
                 )
             elif is_unsafe:
                 log.warning(
-                    "WARNING: The package '%s' is being loaded from "
-                    "an UNSAFE channel. Client continues because it "
+                    "The package '%s' is UNSAFE. "
+                    "Client continues because it "
                     "is explicitly allowed in the environment file",
                     spec_name,
                 )
