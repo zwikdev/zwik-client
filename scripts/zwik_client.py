@@ -855,7 +855,7 @@ class ZwikEnvironment(object):
     def get_legacy_yaml_hash(self):
         import hashlib
 
-        if not os.path.exists(self.yaml_hash):
+        if not os.path.exists(self.yaml_path):
             return None
 
         hash_md5 = hashlib.md5()
