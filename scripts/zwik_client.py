@@ -989,7 +989,7 @@ class ZwikEnvironment(object):
         data = {
             "script_version": __version__,
             "subdir": subdir,
-            "yaml_hash": self.yaml_hash,
+            "yaml_hash": self.get_legacy_yaml_hash(),
             "channel_alias": self.settings.channel_alias,
             "channels": self.channels,
             "dependencies": sorted(lock_dep),
