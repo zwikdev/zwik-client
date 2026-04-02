@@ -948,7 +948,7 @@ class ZwikEnvironment(object):
                     from conda.exports import VersionOrder
 
                     script_ver = data.get("script_version", "0")
-                    if VersionOrder(str(script_ver)) <= VersionOrder("5.16"):
+                    if VersionOrder(str(script_ver)) <= VersionOrder("5.19"):
                         if data["yaml_hash"] == self.get_legacy_yaml_hash():
                             hash_matches = True
 
