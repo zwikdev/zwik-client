@@ -856,21 +856,29 @@ class ZwikEnvironment(object):
         import hashlib
 
         hash_md5 = hashlib.md5()
-        with open(self.yaml_path, "r") as f:
-            in_allow_unsafe_block = False
-            for line in f.readlines():
-                if line.startswith("allow_unsafe:"):
-                    in_allow_unsafe_block = True
-                    continue
+        try:
+            with open(self.yaml_path, "r") as f:
+                in_allow_unsafe_block = False
+                for line in f.readlines():
+                    if line.startswith("allow_unsafe:"):
+                        in_allow_unsafe_block = True
+                        continue
 
-                elif in_allow_unsafe_block and re.match(r"^[^\s#]", line):
-                    # Reached a new root-level key, stop skipping
-                    in_allow_unsafe_block = False
+                    elif in_allow_unsafe_block and re.match(r"^[^\s#]", line):
+                        # Reached a new root-level key, stop skipping
+                        in_allow_unsafe_block = False
 
-                if not in_allow_unsafe_block:
-                    hash_md5.update(line.encode("utf-8"))
-
-        return hash_md5.hexdigest()
+                    if not in_allow_unsafe_block:
+                        hash_md5.update(line.encode("utf-8"))
+            return hash_md5.hexdigest()
+        except FileNotFoundError:
+            # Normally we want to enforce that this is
+            # generated anew, but for single package
+            # test the existing _yaml_hash should be
+            # used
+            if self._yaml_hash:
+                return self.yaml_hash
+            raise
 
     @property
     def env_name(self):

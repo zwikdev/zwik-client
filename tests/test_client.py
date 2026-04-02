@@ -225,8 +225,10 @@ class TestZwikEnvironment(DummyServerEnvironmentTest):
             env = ZwikEnvironment.from_yaml(settings, self.yaml_file)
 
             # Fails validation because version > 5.16,
-            # meaning it only accepted modern_hash
-            self.assertFalse(env.has_valid_lockfile())
+            # meaning it only accepted modern_hash ->
+            # NOTE: TEMPORARY CHANGE TO SUPPORT OLD CLIENTS
+            # WE NOW ALWAYS WRITE THE LEGACY HASH TO LOCK FILE
+            self.assertTrue(env.has_valid_lockfile())
 
             # If we update the file to the modern_hash,
             # it immediately becomes valid again
