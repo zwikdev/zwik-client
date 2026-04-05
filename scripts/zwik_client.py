@@ -445,15 +445,20 @@ class ZwikActivationData:
         return obj
 
 
+def sanitize_pat(text):
+    """Remove zwik PAT tokens from a string to avoid leaking credentials."""
+    if "zwik_pat_" in text:
+        text = re.sub("zwik_pat_[a-zA-Z0-9_-]{5,}", "zwik_pat_******", text)
+    return text
+
+
 class CustomFormatter(logging.Formatter):
     def __init__(self, fmt=None, datefmt=None):
         super().__init__(fmt, datefmt)
 
     def format(self, record):
         result = super().format(record)
-        if "zwik_pat_" in result:
-            result = re.sub("zwik_pat_[a-zA-Z0-9_-]{5,}", "zwik_pat_******", result)
-        return result
+        return sanitize_pat(result)
 
 
 class EnvironmentDependencies:
@@ -1636,7 +1641,7 @@ class ZwikEnvironment(object):
                 )
                 writer.writeheader()
                 for pkg_name, data in packages.items():
-                    writer.writerow(data)
+                    writer.writerow({**data, "url": sanitize_pat(data["url"])})
 
         log.info("Environment exported to %s", output_path)
 
