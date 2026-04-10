@@ -1,7 +1,8 @@
 #!/usr/bin/env sh
 set -e
 CONDA_INSTALLER_LINUX=Miniforge3-24.3.0-0-Linux-x86_64.sh
-CONDA_INSTALLER_MACOS=Miniforge3-24.3.0-0-MacOSX-x86_64.sh
+CONDA_INSTALLER_MACOS_INTEL=Miniforge3-24.3.0-0-MacOSX-x86_64.sh
+CONDA_INSTALLER_MACOS_ARM=Miniforge3-24.3.0-0-MacOSX-arm64.sh
 CONDA_NAME=Mambaforge
 
 if [ -z "$ZWIK_CLIENT_SCRIPT" ] \
@@ -46,7 +47,11 @@ if ! [ -x "${ZWIK_ROOT}/bin/python" ]; then
   echo "Fetching installer"
   installer="/tmp/conda-install.sh"
   if [ "$(uname)" = "Darwin" ]; then
-    installer_url="${ZWIK_URL}/install-data/${CONDA_INSTALLER_MACOS}"
+    if [ "$(uname -m)" = "arm64" ]; then
+      installer_url="${ZWIK_URL}/install-data/${CONDA_INSTALLER_MACOS_ARM}"
+    else
+      installer_url="${ZWIK_URL}/install-data/${CONDA_INSTALLER_MACOS_INTEL}"
+    fi
   else
     installer_url="${ZWIK_URL}/install-data/${CONDA_INSTALLER_LINUX}"
   fi
