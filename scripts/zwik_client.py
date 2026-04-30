@@ -1118,7 +1118,14 @@ class ZwikEnvironment(object):
                 pkg_name,
             )
 
-        solved_dep_list = link_precs.item_list
+        # Check if link_precs is a container object (old API)
+        # or the list of records itself (new API)
+        if hasattr(link_precs, "item_list"):
+            solved_dep_list = link_precs.item_list
+        else:
+            # In newer versions, link_precs is already the collection of records
+            solved_dep_list = link_precs
+
         lockfile_deps = dependencies.get_lock_file_dependencies(solved_dep_list)
 
         if set(self.env_data["dependencies"]) == set(lockfile_deps):
