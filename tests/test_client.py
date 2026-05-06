@@ -698,6 +698,39 @@ class TestZwikEnvironment(DummyServerEnvironmentTest):
         env.export_environment(export_path, export_format)
         self.assertTrue(os.path.exists(export_path))
 
+    def test_export_csv_doesnt_contain_PAT(self):
+        """
+        This test ensures that the export functionality doesn't include the
+        PAT token in the exported file, as it is a sensitive information
+        """
+        env = ZwikEnvironment.from_yaml(ZwikSettings(), self.yaml_file)
+        self.create_env(env)
+
+        # Inject a conda-meta package whose URL contains a PAT token
+        fake_pat = "zwik_pat_secrettoken12345"
+        fake_url = "http://{}@127.0.0.1/channel/noarch/fake-1.0-0.conda".format(
+            fake_pat
+        )
+        fake_pkg_meta = {
+            "name": "fake-package",
+            "version": "1.0",
+            "url": fake_url,
+        }
+        conda_meta_dir = os.path.join(env.prefix, "conda-meta")
+        fake_meta_path = os.path.join(conda_meta_dir, "fake-package-1.0-0.json")
+        with open(fake_meta_path, "w") as fp:
+            json.dump(fake_pkg_meta, fp)
+
+        export_path = os.path.join(self.working_dir, "export_file.csv")
+        env.export_environment(export_path, "csv")
+        self.assertTrue(os.path.exists(export_path))
+
+        with open(export_path) as fp:
+            csv_content = fp.read()
+
+        self.assertNotIn(fake_pat, csv_content)
+        self.assertIn("zwik_pat_******", csv_content)
+
     @mock.patch("scripts.zwik_client.check_installation")
     @mock.patch("scripts.zwik_client.apply_workarounds")
     @mock.patch("scripts.zwik_client.handle_environment")
