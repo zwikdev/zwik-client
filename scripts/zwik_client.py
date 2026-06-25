@@ -1543,8 +1543,6 @@ class ZwikEnvironment(object):
             "report_errors": False,
         }
 
-        os.environ["CONDA_PKGS_DIRS"] = pkgs_dir
-
         with TemporaryDirectory(prefix="zwik_tmp_") as tmpdir:
             rc_file = os.path.join(tmpdir, ".condarc")
             with open(rc_file, "w") as fp:
